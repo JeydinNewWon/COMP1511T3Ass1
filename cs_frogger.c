@@ -15,6 +15,7 @@
 #define SIZE        9
 #define TRUE        1
 #define FALSE       0
+#define MAX_LIVES   3
 
 // TODO: you may choose to add additional #defines here.
 
@@ -32,9 +33,11 @@ struct board_tile {
     enum tile_type prev_type;
 };
 
-struct frogger_pos {
+struct frogger_data {
     int row;
     int col;
+    int lives;
+    int win;
 };
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////  FUNCTION PROTOTYPES  ////////////////////////////
@@ -45,14 +48,18 @@ struct frogger_pos {
 // Prints out the current state of the board.
 void print_board(struct board_tile board[SIZE][SIZE]);
 char type_to_char(enum tile_type type);
-void setup_board(struct board_tile board[SIZE][SIZE], struct frogger_pos *poss);
+void setup_board(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger);
 void add_turtles(struct board_tile board[SIZE][SIZE], int turtle_num);
-void command_handler(struct board_tile board[SIZE][SIZE], char command, struct frogger_pos *pos);
+void command_handler(struct board_tile board[SIZE][SIZE], char command, struct frogger_data *frogger);
 int check_for_turtle(struct board_tile board[SIZE][SIZE], int row);
 int validate_input(int row_or_col);
 int check_for_frogger(struct board_tile board[SIZE][SIZE], int row);
 int check_for_frogger_on_log(struct board_tile board[SIZE][SIZE], int row, int log_start_col);
 int find_log_start_col(struct board_tile board[SIZE][SIZE], int row, int col);
+void print_lives_status(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger);
+void check_game_win(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger);
+int execute_move(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger, int row_mod, int col_mod);
+void return_frogger_start(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger);
 
 
 
@@ -60,7 +67,7 @@ int find_log_start_col(struct board_tile board[SIZE][SIZE], int row, int col);
 void add_log(struct board_tile board[SIZE][SIZE]);
 void clear(struct board_tile board[SIZE][SIZE]);
 void delete_log(struct board_tile board[SIZE][SIZE]);
-void move_frogger(struct board_tile board[SIZE][SIZE], char direction, struct frogger_pos *pos);
+void move_frogger(struct board_tile board[SIZE][SIZE], char direction, struct frogger_data *frogger);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,9 +79,9 @@ int main(void) {
     printf("Welcome to CSE Frogger!\n");
     struct board_tile game_board[SIZE][SIZE];
 
-    struct frogger_pos pos;
+    struct frogger_data frogger;
 
-    setup_board(game_board, &pos);
+    setup_board(game_board, &frogger);
 
     // Read user input and place turtles.
     printf("How many turtles? ");
@@ -94,9 +101,17 @@ int main(void) {
     printf("Enter command: ");
     while (scanf(" %c", &command) == 1) {
         
-        command_handler(game_board, command, &pos);
+        command_handler(game_board, command, &frogger);
+
+        if (frogger.win || frogger.lives <= 0) break;
+
         print_board(game_board);
         printf("Enter command: ");
+    }
+
+    if (frogger.win) {
+        print_board(game_board);
+        printf("\nWahoo!! You Won!\n\n");
     }
 
     printf("Thank you for playing CSE Frogger!\n");
@@ -171,58 +186,51 @@ void delete_log(struct board_tile board[SIZE][SIZE]) {
 
 }
 
-void move_frogger(struct board_tile board[SIZE][SIZE], char direction, struct frogger_pos *pos) {
-    int frog_row = pos->row;
-    int frog_col = pos->col;
+void move_frogger(struct board_tile board[SIZE][SIZE], char direction, struct frogger_data *frogger) {
+    int frog_row = frogger->row;
+    int frog_col = frogger->col;
+
+    int valid_move;
 
     switch (direction) {
         case 'w':
             if (frog_row == 0) return;
 
-            board[frog_row - 1][frog_col].occupied = TRUE;
-
-            pos->row--;
-            board[frog_row][frog_col].occupied = FALSE;
+            valid_move = execute_move(board, frogger, -1, 0);
+            if (valid_move) frogger->row--;
             break;
-
 
         case 'a':
             if (frog_col == 0) return;
 
-            board[frog_row][frog_col - 1].occupied = TRUE;
-
-            pos->col--;
-            board[frog_row][frog_col].occupied = FALSE;
-
+            valid_move = execute_move(board, frogger, 0, -1);
+            if (valid_move) frogger->col--;
             break;
 
         case 'd':
             if (frog_col ==  SIZE - 1) return;
 
-            board[frog_row][frog_col + 1].occupied = TRUE;
-
-            pos->col++;
-            board[frog_row][frog_col].occupied = FALSE;
-
+            valid_move = execute_move(board, frogger, 0, 1);
+            if (valid_move) frogger->col++;
             break;
+
         case 's':
             if (frog_row == SIZE - 1) return;
 
-            board[frog_row + 1][frog_col].occupied = TRUE;
-
-            pos->row++; 
-            board[frog_row][frog_col].occupied = FALSE;
+            valid_move = execute_move(board, frogger, 1, 0);
+            if (valid_move) frogger->row++; 
             break;
-
         default:
             break;
     }
+
+    check_game_win(board, frogger);
 }
 
 
 /////////////////////////////// UTILITY FUNCTIONS //////////////////////////////
 
-void setup_board(struct board_tile board[SIZE][SIZE], struct frogger_pos *pos) {
+void setup_board(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger) {
 
     // sets up the first row with lilypads
     for (int i = 0; i < SIZE; i += 2) {
@@ -231,7 +239,7 @@ void setup_board(struct board_tile board[SIZE][SIZE], struct frogger_pos *pos) {
             .occupied = FALSE,
         };
         board[0][i] = lilly_pad;
-    }
+    } 
     
     // fill the rest of the first row with water.
     for (int i = 1; i < SIZE; i += 2) {
@@ -255,8 +263,10 @@ void setup_board(struct board_tile board[SIZE][SIZE], struct frogger_pos *pos) {
         if (col == SIZE / 2) {
             board[SIZE - 1][col].occupied = TRUE;
 
-            pos->row = SIZE - 1;
-            pos->col = col;
+            frogger->row = SIZE - 1;
+            frogger->col = col;
+            frogger->lives = MAX_LIVES;
+            frogger->win = FALSE;
         } else {
             board[SIZE - 1][col].occupied = FALSE;
         }
@@ -281,7 +291,7 @@ void add_turtles(struct board_tile board[SIZE][SIZE], int turtle_num) {
     }
 }
 
-void command_handler(struct board_tile board[SIZE][SIZE], char command, struct frogger_pos *pos) {
+void command_handler(struct board_tile board[SIZE][SIZE], char command, struct frogger_data *frogger) {
     switch (command) {
         case 'l':
             add_log(board);
@@ -293,16 +303,16 @@ void command_handler(struct board_tile board[SIZE][SIZE], char command, struct f
             delete_log(board);
             break;
         case 'w':
-            move_frogger(board, command, pos);
+            move_frogger(board, command, frogger);
             break;
         case 'a':
-            move_frogger(board, command, pos);
+            move_frogger(board, command, frogger);
             break;
         case 's':
-            move_frogger(board, command, pos);
+            move_frogger(board, command, frogger);
             break;
         case 'd':
-            move_frogger(board, command, pos);
+            move_frogger(board, command, frogger);
             break;
         default:
             break;
@@ -311,9 +321,7 @@ void command_handler(struct board_tile board[SIZE][SIZE], char command, struct f
 
 int check_for_turtle(struct board_tile board[SIZE][SIZE], int row) {
     for (int col = 0; col < SIZE; col++) {
-        if (board[row][col].type == TURTLE) {
-            return TRUE;
-        }
+        if (board[row][col].type == TURTLE) return TRUE;
     }
 
     return FALSE;
@@ -321,9 +329,7 @@ int check_for_turtle(struct board_tile board[SIZE][SIZE], int row) {
 
 int check_for_frogger(struct board_tile board[SIZE][SIZE], int row) {
     for (int col = 0; col < SIZE; col++) {
-        if (board[row][col].occupied) {
-            return TRUE;
-        }
+        if (board[row][col].occupied) return TRUE;
     }
 
     return FALSE;
@@ -351,6 +357,48 @@ int find_log_start_col(struct board_tile board[SIZE][SIZE], int row, int col) {
 
 int validate_input(int row_or_col) {
     return (row_or_col >= 0 && row_or_col < SIZE);
+}
+
+void check_game_win(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger) {
+    if (board[frogger->row][frogger->col].type == LILLYPAD) {
+        frogger->win = TRUE;
+        return;
+    }
+}
+
+void print_lives_status(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger) {
+    print_board(board);
+
+    if (frogger->lives == 0) {
+        printf("\n !! GAME OVER !! \n\n");
+        return;
+    }
+    printf("\n# LIVES LEFT: %d #\n\n", frogger->lives);
+}
+
+int execute_move(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger, int row_mod, int col_mod) {
+    int frog_row = frogger->row;
+    int frog_col = frogger->col;
+
+    board[frog_row + row_mod][frog_col + col_mod].occupied = TRUE;
+    board[frog_row][frog_col].occupied = FALSE;
+
+    if (board[frog_row + row_mod][frog_col + col_mod].type == WATER) {
+        frogger->lives--;
+        print_lives_status(board, frogger);
+        board[frog_row + row_mod][frog_col + col_mod].occupied = FALSE;
+        return_frogger_start(board, frogger);
+        return FALSE;
+    }
+
+    return TRUE;
+
+}
+
+void return_frogger_start(struct board_tile board[SIZE][SIZE], struct frogger_data *frogger) {
+    board[SIZE - 1][SIZE / 2].occupied = TRUE;
+    frogger->row = SIZE - 1;
+    frogger->col = SIZE / 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
