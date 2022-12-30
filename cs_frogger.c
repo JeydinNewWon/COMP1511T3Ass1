@@ -464,15 +464,12 @@ void return_frogger_start(struct board_tile board[SIZE][SIZE], struct frogger_da
     frogger->col = SIZE / 2;
 }
 
+// Starts calling functions to move all the bugs within the board. 
+// It then resets the bug_moved flag, so that the bugs can be moved again.
 void move_bugs(struct board_tile board[SIZE][SIZE]) {
     for (int row = 0; row < SIZE; row++) {
         for (int col = 0; col < SIZE; col++) {
             if (board[row][col].has_bug && !board[row][col].bug_moved) {
-                /*
-                for (int j = 0; j < SIZE; j++) {
-                    printf("row: %d, col: %d HAS BUG: %d\n", row, j, board[row][j].has_bug);
-                    //printf("HAS BUG: %d\n", board[row][j].has_bug);
-                }*/
                 move_single_bug(board, row, col);
             }
         }
@@ -487,6 +484,8 @@ void move_bugs(struct board_tile board[SIZE][SIZE]) {
     }
 }
 
+// Moves a single bug to whatever direction is fitting.
+// It prioritises moving to an available space first.
 void move_single_bug(struct board_tile board[SIZE][SIZE], int row, int col) {
     enum bug_move_dir bug_dir = board[row][col].bug_dir;
 
@@ -508,6 +507,8 @@ void move_single_bug(struct board_tile board[SIZE][SIZE], int row, int col) {
 
 }
 
+// Returns an ENUM of the type of available space that the function has determined is for the bug.
+// Also considers the case for when the pieces are at the edges.
 enum available_space check_bug_space(struct board_tile board[SIZE][SIZE], int row, int col) {
     if (col == 0) {
         if (!is_available_for_bug(board, row, col, 1)) return NO_SPACE;
@@ -522,24 +523,16 @@ enum available_space check_bug_space(struct board_tile board[SIZE][SIZE], int ro
     int right_available = is_available_for_bug(board, row, col, 1);
     int left_available = is_available_for_bug(board, row, col, -1);
 
-    if (left_available && right_available) { 
-        //printf("BOTH!\n"); 
-        return BOTH_SPACES;
-        
-    }
-    if (right_available) {
-        //printf("RIGHT!\n");
-        return RIGHT_SPACE;
-    }
-    if (left_available) { 
-        //printf("LEFT!\n");
-        return LEFT_SPACE;
-    }
+    if (left_available && right_available) return BOTH_SPACES;
+  
+    if (right_available) return RIGHT_SPACE;
+    if (left_available) return LEFT_SPACE;
     
     return NO_SPACE;
 }
 
 
+// checks if there are any available spaces for the bug, with col_mod being an integer that determines left or right (-1 and 1 respectively).
 int is_available_for_bug(struct board_tile board[SIZE][SIZE], int row, int col, int col_mod) {
     struct board_tile check_tile = board[row][col + col_mod];
 
@@ -548,6 +541,7 @@ int is_available_for_bug(struct board_tile board[SIZE][SIZE], int row, int col, 
     return TRUE;
 }
 
+// Actually performs the bug move execution once the program completes. 
 void execute_bug_move(struct board_tile board[SIZE][SIZE], int row, int col, int col_mod) {
     board[row][col].has_bug = FALSE;
     board[row][col].bug_dir = NONE;
